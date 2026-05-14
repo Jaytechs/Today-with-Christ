@@ -9,7 +9,7 @@ importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-comp
 
 // TODO: Replace with your Firebase config
 firebase.initializeApp({
-  apiKey: "AIzaSyCKwovJyLjlDZWDGU8i9GQlQCV25W6TTBc",
+  apiKey: "your-api-key",
   authDomain: "today-with-christ.firebaseapp.com",
   projectId: "today-with-christ",
   storageBucket: "today-with-christ.firebasestorage.app",
