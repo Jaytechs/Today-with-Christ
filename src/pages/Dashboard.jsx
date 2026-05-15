@@ -1,6 +1,13 @@
 // src/pages/Dashboard.jsx — Complete enhanced dashboard
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  lazy,
+  Suspense,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
 import { Routes, Route, Link } from "react-router-dom";
 import {
   Menu,
@@ -22,6 +29,8 @@ import {
   Pencil,
 } from "lucide-react";
 import Sidebar from "../components/dashboard/Sidebar";
+import { ErrorBoundary } from "../components/shared/ErrorBoundary";
+import { PageSpinner } from "../components/shared/UIStates";
 import CommunityFeed from "./CommunityFeed";
 import VideoLibrary from "./VideoLibrary";
 import AdminPanel from "./AdminPanel";
@@ -63,6 +72,14 @@ import {
   updatePathwayLevel,
   deletePathwayLevel,
 } from "../firebase/firestore";
+
+const DashHomeModule = lazy(() => import("./dashboard/HomePage"));
+const ScripturePageModule = lazy(() => import("./dashboard/ScripturePage"));
+const PrayerPageModule = lazy(() => import("./dashboard/PrayerPage"));
+const ReflectionPageModule = lazy(() => import("./dashboard/ReflectionPage"));
+const RemindersPageModule = lazy(() => import("./dashboard/RemindersPage"));
+const ProgressPageModule = lazy(() => import("./dashboard/ProgressPage"));
+const PathwayPageModule = lazy(() => import("./dashboard/PathwayPage"));
 
 // ── Guest Banner ─────────────────────────────────────────────────────────────
 function GuestBanner() {
@@ -2275,28 +2292,32 @@ export default function Dashboard() {
           </div>
         </header>
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-5xl w-full mx-auto">
-          <Routes>
-            <Route index element={<DashHome />} />
-            <Route path="scripture" element={<ScripturePage />} />
-            <Route path="prayer" element={<PrayerPage />} />
-            <Route path="reflection" element={<ReflectionPage />} />
-            <Route path="history" element={<ReflectionHistory />} />
-            <Route path="progress" element={<ProgressPage />} />
-            <Route path="reminders" element={<RemindersPage />} />
-            <Route path="community" element={<CommunityFeed />} />
-            <Route path="videos" element={<VideoLibrary />} />
-            <Route path="pathway" element={<PathwayPage />} />
-            <Route path="pathway/:levelIndex" element={<PathwayLevel />} />
-            <Route
-              path="pathway/:levelIndex/add-lesson"
-              element={<LessonEditor />}
-            />
-            <Route
-              path="pathway/:levelIndex/edit/:lessonId"
-              element={<LessonEditor />}
-            />
-            {isAdmin && <Route path="admin" element={<AdminPanel />} />}
-          </Routes>
+          <ErrorBoundary>
+            <Suspense fallback={<PageSpinner />}>
+              <Routes>
+                <Route index element={<DashHomeModule />} />
+                <Route path="scripture" element={<ScripturePageModule />} />
+                <Route path="prayer" element={<PrayerPageModule />} />
+                <Route path="reflection" element={<ReflectionPageModule />} />
+                <Route path="history" element={<ReflectionHistory />} />
+                <Route path="progress" element={<ProgressPageModule />} />
+                <Route path="reminders" element={<RemindersPageModule />} />
+                <Route path="community" element={<CommunityFeed />} />
+                <Route path="videos" element={<VideoLibrary />} />
+                <Route path="pathway" element={<PathwayPageModule />} />
+                <Route path="pathway/:levelIndex" element={<PathwayLevel />} />
+                <Route
+                  path="pathway/:levelIndex/add-lesson"
+                  element={<LessonEditor />}
+                />
+                <Route
+                  path="pathway/:levelIndex/edit/:lessonId"
+                  element={<LessonEditor />}
+                />
+                {isAdmin && <Route path="admin" element={<AdminPanel />} />}
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
     </div>
