@@ -2,25 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
     function isAuth()   { return request.auth != null; }
     function uid()      { return request.auth.uid; }
     function isOwner(u) { return isAuth() && uid() == u; }
-
-    // Read the caller's user document — cached per request by Firestore
-    function me() { return get(/databases/$(database)/documents/users/$(uid())).data; }
-
+    function me()       { return get(/databases/$(database)/documents/users/$(uid())).data; }
     function isMentor() { return isAuth() && me().role == 'mentor' && me().isVerifiedMentor == true; }
     function isAdmin()  { return isAuth() && me().role == 'admin'; }
     function isMod()    { return isAdmin() || isMentor(); }
-
-    // Disabled users cannot write anything
     function notDisabled() { return !('disabled' in me()) || me().disabled != true; }
 
-    // ── Users ─────────────────────────────────────────────────────────────────
-    // Anyone authenticated can read user profiles (for display names etc.)
-    // Users can update their own profile, but cannot change role or isVerifiedMentor
-    // Only admins can set those fields or delete users
+    // Users
     match /users/{userId} {
       allow read:   if isAuth();
       allow create: if isOwner(userId);
@@ -31,12 +22,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ── Daily content (read-only for users, admin-write) ──────────────────────
+    // Daily content
     match /dailyDevotions/{id} { allow read: if true; allow write: if isAdmin(); }
     match /dailyPrayers/{id}   { allow read: if true; allow write: if isAdmin(); }
 
-    // ── Scripture library ─────────────────────────────────────────────────────
-    // Mentors and admins can add. Only admin or the mentor who added can delete.
+    // Scriptures — public read, mentor/admin write
     match /scriptures/{id} {
       allow read:   if true;
       allow create: if isMod() && notDisabled();
@@ -44,22 +34,18 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isAuth() && resource.data.addedBy == uid());
     }
 
-    // ── Prayer requests (user-generated) ─────────────────────────────────────
+    // Prayer requests
     match /prayerRequests/{id} {
       allow read:   if isAuth();
-      allow create: if isAuth() && notDisabled()
-                    && request.resource.data.uid == uid();
-      // Owner can mark answered; anyone can toggle prayedFor/prayedCount; admin can edit all
+      allow create: if isAuth() && notDisabled() && request.resource.data.uid == uid();
       allow update: if isAuth() && (
           resource.data.uid == uid()
-          || request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['prayedFor', 'prayedCount'])
-          || isAdmin()
-        );
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['prayedFor', 'prayedCount'])
+          || isAdmin());
       allow delete: if isAuth() && (resource.data.uid == uid() || isAdmin());
     }
 
-    // ── Prayer points (mentor/admin) ──────────────────────────────────────────
+    // Prayer points
     match /prayerPoints/{id} {
       allow read:   if isAuth();
       allow create: if isMod() && notDisabled();
@@ -67,25 +53,25 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isAuth() && resource.data.uid == uid());
     }
 
-    // ── User reminders (private) ──────────────────────────────────────────────
+    // User reminders
     match /userReminders/{userId} {
       allow read, write: if isOwner(userId) && notDisabled();
     }
 
-    // ── Reflections (private to owner) ────────────────────────────────────────
+    // Reflections
     match /reflectionEntries/{id} {
       allow read:   if isAuth() && resource.data.uid == uid();
       allow create: if isAuth() && notDisabled() && request.resource.data.uid == uid();
       allow update, delete: if isAuth() && resource.data.uid == uid();
     }
 
-    // ── User daily progress ───────────────────────────────────────────────────
+    // User progress
     match /userProgress/{id} {
       allow read:  if isAuth() && resource.data.uid == uid();
       allow write: if isAuth() && notDisabled() && request.resource.data.uid == uid();
     }
 
-    // ── Pathway levels (mentor/admin editable) ────────────────────────────────
+    // Pathway levels
     match /pathwayLevels/{id} {
       allow read:   if true;
       allow create: if isMod() && notDisabled();
@@ -93,7 +79,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ── Pathway lessons (mentor/admin editable) ───────────────────────────────
+    // Pathway lessons
     match /pathwayLessons/{id} {
       allow read:   if true;
       allow create: if isMod() && notDisabled();
@@ -101,35 +87,30 @@ service cloud.firestore {
       allow delete: if isMod();
     }
 
-    // ── Lesson progress (private) ─────────────────────────────────────────────
+    // Lesson progress
     match /lessonProgress/{id} {
       allow read:  if isAuth() && resource.data.uid == uid();
       allow write: if isAuth() && notDisabled() && request.resource.data.uid == uid();
     }
 
-    // ── Community posts ───────────────────────────────────────────────────────
-    // Users post reflections; mentors/admins post teachings
+    // Community posts
     match /communityPosts/{postId} {
       allow read: if true;
-      allow create: if isAuth() && notDisabled()
-                    && request.resource.data.userId == uid()
+      allow create: if isAuth() && notDisabled() && request.resource.data.userId == uid()
                     && (request.resource.data.type == 'reflection' || isMod());
       allow update: if isAuth() && (
           resource.data.userId == uid()
           || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['amenCount', 'amenedBy'])
-          || isAdmin()
-        );
+          || isAdmin());
       allow delete: if isAuth() && (resource.data.userId == uid() || isAdmin());
-
       match /comments/{commentId} {
         allow read:   if true;
-        allow create: if isAuth() && notDisabled()
-                      && request.resource.data.uid == uid();
+        allow create: if isAuth() && notDisabled() && request.resource.data.uid == uid();
         allow delete: if isAuth() && (resource.data.uid == uid() || isAdmin());
       }
     }
 
-    // ── Videos ───────────────────────────────────────────────────────────────
+    // Videos
     match /videos/{id} {
       allow read:   if true;
       allow create: if isMod() && notDisabled();
@@ -137,18 +118,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ── Video progress (private) ──────────────────────────────────────────────
+    // Video progress
     match /videoProgress/{id} {
       allow read:  if isAuth() && resource.data.uid == uid();
       allow write: if isAuth() && notDisabled() && request.resource.data.uid == uid();
     }
 
-    // ── Reports (users submit, only admins read/update) ───────────────────────
+    // Reports
     match /reports/{id} {
-      allow create: if isAuth() && notDisabled()
-                    && request.resource.data.reporterId == uid();
-      allow read, update: if isAdmin();
-      allow delete: if isAdmin();
+      allow create: if isAuth() && notDisabled() && request.resource.data.reporterId == uid();
+      allow read, update, delete: if isAdmin();
     }
   }
 }
