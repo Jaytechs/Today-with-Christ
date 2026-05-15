@@ -12,11 +12,11 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   signInWithPopup,
+  signInWithRedirect,
   getRedirectResult,
   sendPasswordResetEmail,
   updateProfile,
 } from "firebase/auth";
-
 import { auth, googleProvider } from "../firebase/config";
 import { createUserProfile, getUserProfile } from "../firebase/firestore";
 
@@ -27,24 +27,6 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
   return ctx;
 }
-useEffect(() => {
-  const { getRedirectResult } = require("firebase/auth");
-  getRedirectResult(auth)
-    .then(async (result) => {
-      if (!result) return;
-      let prof = await getUserProfile(result.user.uid);
-      if (!prof) {
-        await createUserProfile(result.user.uid, {
-          fullName: result.user.displayName || "",
-          email: result.user.email || "",
-          language: "en",
-        });
-        prof = await getUserProfile(result.user.uid);
-      }
-      setProfile(prof);
-    })
-    .catch(() => {});
-}, []);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -52,6 +34,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState("");
 
+  // Listen for auth state changes
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
@@ -72,6 +55,27 @@ export function AuthProvider({ children }) {
       setLoading(false);
     });
     return unsub;
+  }, []);
+
+  // Handle Google redirect result when page reloads after mobile redirect
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (!result) return;
+        let prof = await getUserProfile(result.user.uid);
+        if (!prof) {
+          await createUserProfile(result.user.uid, {
+            fullName: result.user.displayName || "",
+            email: result.user.email || "",
+            language: "en",
+          });
+          prof = await getUserProfile(result.user.uid);
+        }
+        setProfile(prof);
+      })
+      .catch(() => {
+        // No redirect in progress — ignore silently
+      });
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -102,7 +106,7 @@ export function AuthProvider({ children }) {
   async function loginWithGoogle() {
     setAuthError("");
     try {
-      // Try popup first (works on desktop)
+      // Try popup first — works on desktop
       const cred = await signInWithPopup(auth, googleProvider);
       let prof = await getUserProfile(cred.user.uid);
       if (!prof) {
@@ -116,15 +120,16 @@ export function AuthProvider({ children }) {
       setProfile(prof);
       return cred.user;
     } catch (err) {
+      // User closed the popup — do nothing
       if (err.code === "auth/popup-closed-by-user") return;
-      // On mobile or if popup blocked — fall back to redirect
+
+      // Popup blocked or mobile browser — fall back to redirect
       if (
         err.code === "auth/popup-blocked" ||
         err.code === "auth/cancelled-popup-request" ||
         err.code === "auth/internal-error"
       ) {
         try {
-          const { signInWithRedirect } = await import("firebase/auth");
           await signInWithRedirect(auth, googleProvider);
         } catch {
           setAuthError(
@@ -133,6 +138,7 @@ export function AuthProvider({ children }) {
         }
         return;
       }
+
       setAuthError(
         "Google sign-in failed. Please try again or use email and password.",
       );
