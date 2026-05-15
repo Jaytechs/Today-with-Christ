@@ -12,9 +12,11 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   signInWithPopup,
+  getRedirectResult,
   sendPasswordResetEmail,
   updateProfile,
 } from "firebase/auth";
+
 import { auth, googleProvider } from "../firebase/config";
 import { createUserProfile, getUserProfile } from "../firebase/firestore";
 
@@ -25,6 +27,24 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
   return ctx;
 }
+useEffect(() => {
+  const { getRedirectResult } = require("firebase/auth");
+  getRedirectResult(auth)
+    .then(async (result) => {
+      if (!result) return;
+      let prof = await getUserProfile(result.user.uid);
+      if (!prof) {
+        await createUserProfile(result.user.uid, {
+          fullName: result.user.displayName || "",
+          email: result.user.email || "",
+          language: "en",
+        });
+        prof = await getUserProfile(result.user.uid);
+      }
+      setProfile(prof);
+    })
+    .catch(() => {});
+}, []);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -82,6 +102,7 @@ export function AuthProvider({ children }) {
   async function loginWithGoogle() {
     setAuthError("");
     try {
+      // Try popup first (works on desktop)
       const cred = await signInWithPopup(auth, googleProvider);
       let prof = await getUserProfile(cred.user.uid);
       if (!prof) {
@@ -96,13 +117,25 @@ export function AuthProvider({ children }) {
       return cred.user;
     } catch (err) {
       if (err.code === "auth/popup-closed-by-user") return;
-      if (err.code === "auth/popup-blocked") {
-        setAuthError(
-          "Popup was blocked. Please allow popups for this site in your browser settings, then try again.",
-        );
+      // On mobile or if popup blocked — fall back to redirect
+      if (
+        err.code === "auth/popup-blocked" ||
+        err.code === "auth/cancelled-popup-request" ||
+        err.code === "auth/internal-error"
+      ) {
+        try {
+          const { signInWithRedirect } = await import("firebase/auth");
+          await signInWithRedirect(auth, googleProvider);
+        } catch {
+          setAuthError(
+            "Google sign-in is not supported on this browser. Please use email and password instead.",
+          );
+        }
         return;
       }
-      throw err;
+      setAuthError(
+        "Google sign-in failed. Please try again or use email and password.",
+      );
     }
   }
 
