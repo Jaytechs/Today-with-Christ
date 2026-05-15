@@ -12,8 +12,6 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   sendPasswordResetEmail,
   updateProfile,
 } from "firebase/auth";
@@ -28,13 +26,6 @@ export function useAuth() {
   return ctx;
 }
 
-// Detect mobile/embedded browsers where popups are blocked
-function isMobileBrowser() {
-  return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|Mobile/i.test(
-    navigator.userAgent,
-  );
-}
-
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -46,7 +37,6 @@ export function AuthProvider({ children }) {
       setUser(firebaseUser);
       if (firebaseUser) {
         let prof = await getUserProfile(firebaseUser.uid);
-        // Handle Google redirect result — create profile if new user
         if (!prof) {
           await createUserProfile(firebaseUser.uid, {
             fullName: firebaseUser.displayName || "",
@@ -62,13 +52,6 @@ export function AuthProvider({ children }) {
       setLoading(false);
     });
     return unsub;
-  }, []);
-
-  // Handle Google redirect result on page load
-  useEffect(() => {
-    getRedirectResult(auth).catch(() => {
-      // Silently ignore — no redirect in progress
-    });
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -98,12 +81,6 @@ export function AuthProvider({ children }) {
 
   async function loginWithGoogle() {
     setAuthError("");
-    // Use redirect on mobile (popups are blocked), popup on desktop
-    if (isMobileBrowser()) {
-      await signInWithRedirect(auth, googleProvider);
-      // Page will reload — onAuthStateChanged handles the result
-      return;
-    }
     try {
       const cred = await signInWithPopup(auth, googleProvider);
       let prof = await getUserProfile(cred.user.uid);
@@ -118,12 +95,11 @@ export function AuthProvider({ children }) {
       setProfile(prof);
       return cred.user;
     } catch (err) {
-      // popup blocked on desktop too — fall back to redirect
-      if (
-        err.code === "auth/popup-blocked" ||
-        err.code === "auth/popup-closed-by-user"
-      ) {
-        await signInWithRedirect(auth, googleProvider);
+      if (err.code === "auth/popup-closed-by-user") return;
+      if (err.code === "auth/popup-blocked") {
+        setAuthError(
+          "Popup was blocked. Please allow popups for this site in your browser settings, then try again.",
+        );
         return;
       }
       throw err;
